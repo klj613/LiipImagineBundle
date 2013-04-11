@@ -20,10 +20,12 @@ class WebPathResolverTest extends AbstractTest
      * @var WebPathResolver
      */
     protected $resolver;
+    protected $basePathResolver;
 
     protected $webRoot;
     protected $dataRoot;
     protected $cacheDir;
+    protected $basePathCacheDir;
 
     protected function setUp()
     {
@@ -44,8 +46,10 @@ class WebPathResolverTest extends AbstractTest
         $this->webRoot = $this->tempDir.'/root/web';
         $this->dataRoot = $this->fixturesDir.'/assets';
         $this->cacheDir = $this->webRoot.'/media/cache';
+        $this->basePathCacheDir = $this->webRoot.'/cache';
 
         $this->filesystem->mkdir($this->cacheDir);
+        $this->filesystem->mkdir($this->basePathCacheDir);
 
         $this->cacheManager = $this->getMock('Liip\ImagineBundle\Imagine\Cache\CacheManager', array(
             'generateUrl',
@@ -54,7 +58,11 @@ class WebPathResolverTest extends AbstractTest
         ));
 
         $this->resolver = new WebPathResolver($this->filesystem);
+        $this->basePathResolver = new WebPathResolver($this->filesystem);
+        $this->basePathResolver->setBasePath('/media');
+
         $this->cacheManager->addResolver('web_path', $this->resolver);
+        $this->cacheManager->addResolver('web_path', $this->basePathResolver);
     }
 
     public function testDefaultBehavior()
@@ -165,7 +173,7 @@ class WebPathResolverTest extends AbstractTest
     /**
      * @depends testDefaultBehavior
      */
-    public function testResolveWithBasePath()
+    public function testResolveWithBaseUrl()
     {
         $this->cacheManager
             ->expects($this->atLeastOnce())
@@ -201,6 +209,50 @@ class WebPathResolverTest extends AbstractTest
 
         // Remove the cached image.
         $this->assertTrue($this->resolver->remove($targetPath, 'thumbnail'),
+            '->remove() reports removal of cached image file correctly.');
+        $this->assertFalse(file_exists($targetPath),
+            '->remove() actually removes the cached file from the filesystem.');
+    }
+
+    /**
+     * @depends testDefaultBehavior
+     */
+    public function testResolveWithBasePath()
+    {
+        $this->cacheManager
+            ->expects($this->atLeastOnce())
+            ->method('generateUrl')
+            ->will($this->returnValue('/sandbox/app_dev.php/media/cache/thumbnail/cats.jpeg'))
+        ;
+
+        $request = $this->getMock('Symfony\Component\HttpFoundation\Request');
+        $request
+            ->expects($this->atLeastOnce())
+            ->method('getBaseUrl')
+            ->will($this->returnValue('/sandbox/app_dev.php'))
+        ;
+
+        // Resolve the requested image for the given filter.
+        $targetPath = $this->basePathResolver->resolve($request, 'cats.jpeg', 'thumbnail');
+        // The realpath() is important for filesystems that are virtual in some way (encrypted, different mount options, ..)
+        $this->assertEquals(realpath($this->basePathCacheDir).'/thumbnail/cats.jpeg', $targetPath,
+            '->resolve() correctly converts the requested file into target path within webRoot.');
+        $this->assertFalse(file_exists($targetPath),
+            '->resolve() does not create the file within the target path.');
+
+        // Store the cached version of that image.
+        $content = file_get_contents($this->dataRoot.'/cats.jpeg');
+        $response = new Response($content);
+        $this->basePathResolver->store($response, $targetPath, 'thumbnail');
+        $this->assertEquals(201, $response->getStatusCode(),
+            '->store() alters the HTTP response code to "201 - Created".');
+        $this->assertTrue(file_exists($targetPath),
+            '->store() creates the cached image file to be served.');
+        $this->assertEquals($content, file_get_contents($targetPath),
+            '->store() writes the content of the original Response into the cache file.');
+
+        // Remove the cached image.
+        $this->assertTrue($this->basePathResolver->remove($targetPath, 'thumbnail'),
             '->remove() reports removal of cached image file correctly.');
         $this->assertFalse(file_exists($targetPath),
             '->remove() actually removes the cached file from the filesystem.');

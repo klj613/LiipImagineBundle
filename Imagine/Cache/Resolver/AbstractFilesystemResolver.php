@@ -23,6 +23,11 @@ abstract class AbstractFilesystemResolver implements ResolverInterface, CacheMan
     protected $basePath = '';
 
     /**
+     * @var string
+     */
+    protected $baseUrl = '';
+
+    /**
      * @var CacheManager
      */
     protected $cacheManager;

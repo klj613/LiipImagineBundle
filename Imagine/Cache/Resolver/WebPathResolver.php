@@ -14,7 +14,7 @@ class WebPathResolver extends AbstractFilesystemResolver
     public function resolve(Request $request, $path, $filter)
     {
         $browserPath = $this->decodeBrowserPath($this->getBrowserPath($path, $filter));
-        $this->basePath = $request->getBaseUrl();
+        $this->baseUrl = $request->getBaseUrl();
         $targetPath = $this->getFilePath($path, $filter);
 
         // if the file has already been cached, we're probably not rewriting
@@ -64,9 +64,10 @@ class WebPathResolver extends AbstractFilesystemResolver
     protected function getFilePath($path, $filter)
     {
         $browserPath = $this->decodeBrowserPath($this->getBrowserPath($path, $filter));
+        $base = $this->baseUrl . $this->basePath;
 
-        if (!empty($this->basePath) && 0 === strpos($browserPath, $this->basePath)) {
-            $browserPath = substr($browserPath, strlen($this->basePath));
+        if (!empty($base) && 0 === strpos($browserPath, $base)) {
+            $browserPath = substr($browserPath, strlen($base));
         }
 
         return $this->cacheManager->getWebRoot().$browserPath;
